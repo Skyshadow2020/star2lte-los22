@@ -1,0 +1,125 @@
+name: LineageOS 22.2 star2lte
+
+# Full-ROM build for star2lte (Galaxy S9+ Exynos 9810) on GitHub Actions.
+#
+# HEAVY: a from-scratch LineageOS 22 build needs a lot of disk and time. A
+# free GitHub-hosted runner has a 6-hour job limit and ~14 GB free disk; the
+# maximize-build-space step below reclaims ~65-75 GB, and a shallow sync keeps
+# the source ~30-40 GB, but a cold full build can still exceed 6 h on the free
+# runner's 2-4 vCPUs. Options if it does:
+#   - run with input `mode: sync` first (just fetch source, well under 6 h),
+#     then `mode: build` on a warm ccache;
+#   - move this workflow to a larger/self-hosted runner (e.g. the VPS).
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "sync = fetch source only · build = sync + compile"
+        default: "build"
+        type: choice
+        options: ["build", "sync"]
+      variant:
+        description: "build variant"
+        default: "userdebug"
+        type: choice
+        options: ["userdebug", "user", "eng"]
+
+concurrency:
+  group: los22-star2lte
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 4096
+          swap-size-mb: 8192
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+          remove-codeql: "true"
+          remove-docker-images: "true"
+          build-mount-path: /home/runner/work/los
+
+      - name: Checkout (local manifest lives here)
+        uses: actions/checkout@v4
+        with:
+          path: repo-config
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
+            git git-lfs gnupg gperf imagemagick lib32readline-dev lib32z1-dev \
+            libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 \
+            libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc \
+            zip zlib1g-dev python3 python-is-python3 openjdk-21-jdk-headless
+          mkdir -p ~/bin
+          curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/work/los/.ccache
+          key: ccache-los22-star2lte-${{ github.run_id }}
+          restore-keys: ccache-los22-star2lte-
+
+      - name: repo init + local manifest
+        working-directory: /home/runner/work/los
+        run: |
+          git config --global user.email "ci@local"
+          git config --global user.name "ci"
+          git config --global color.ui false
+          repo init --depth=1 -u https://github.com/LineageOS/android.git -b lineage-22.2 --git-lfs
+          mkdir -p .repo/local_manifests
+          cp "$GITHUB_WORKSPACE/../repo-config/.repo-local-manifests/star2lte.xml" .repo/local_manifests/star2lte.xml
+          test -f .repo/local_manifests/star2lte.xml
+
+      - name: repo sync (shallow)
+        working-directory: /home/runner/work/los
+        run: |
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch \
+            --prune --force-sync -j"$(nproc)" || \
+          repo sync -c --no-clone-bundle --no-tags -j4
+          df -h /home/runner/work/los
+
+      - name: Build ROM
+        if: ${{ inputs.mode == 'build' }}
+        working-directory: /home/runner/work/los
+        env:
+          CCACHE_DIR: /home/runner/work/los/.ccache
+          CCACHE_EXEC: /usr/bin/ccache
+        run: |
+          ccache -M 20G
+          export USE_CCACHE=1
+          export ALLOW_MISSING_DEPENDENCIES=true
+          source build/envsetup.sh
+          breakfast star2lte ${{ inputs.variant }}
+          mka bacon -j"$(nproc)"
+
+      - name: Collect artifacts
+        if: ${{ inputs.mode == 'build' }}
+        working-directory: /home/runner/work/los
+        run: |
+          mkdir -p out-artifacts
+          cp out/target/product/star2lte/lineage-*.zip out-artifacts/ 2>/dev/null || true
+          cp out/target/product/star2lte/recovery.img out-artifacts/ 2>/dev/null || true
+          cp out/target/product/star2lte/boot.img out-artifacts/ 2>/dev/null || true
+          ls -la out-artifacts
+
+      - name: Upload ROM
+        if: ${{ inputs.mode == 'build' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lineage-22.2-star2lte
+          path: /home/runner/work/los/out-artifacts/*
+          if-no-files-found: warn
+          retention-days: 7
