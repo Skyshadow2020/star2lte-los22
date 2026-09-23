@@ -7,9 +7,12 @@ name: LineageOS 22.2 star2lte
 # maximize-build-space step below reclaims ~65-75 GB, and a shallow sync keeps
 # the source ~30-40 GB, but a cold full build can still exceed 6 h on the free
 # runner's 2-4 vCPUs. Options if it does:
+#   - re-run with input `mode: build`: ccache is persisted between runs, so
+#     the second pass reuses everything that compiled in run #1;
 #   - run with input `mode: sync` first (just fetch source, well under 6 h),
-#     then `mode: build` on a warm ccache;
-#   - move this workflow to a larger/self-hosted runner (e.g. the VPS).
+#     then `mode: build` on a warm ccache.
+#
+# GitHub Actions ONLY for this project — no self-hosted/VPS runners.
 
 on:
   workflow_dispatch:
@@ -80,7 +83,10 @@ jobs:
           git config --global color.ui false
           repo init --depth=1 -u https://github.com/LineageOS/android.git -b lineage-22.2 --git-lfs
           mkdir -p .repo/local_manifests
-          cp "$GITHUB_WORKSPACE/../repo-config/.repo-local-manifests/star2lte.xml" .repo/local_manifests/star2lte.xml
+          # actions/checkout with path: repo-config lands at
+          # $GITHUB_WORKSPACE/repo-config (NOT the parent dir) — this path was
+          # the exact cause of run #1 failing in Skyshadow2022/star2lte-los22.
+          cp "$GITHUB_WORKSPACE/repo-config/.repo-local-manifests/star2lte.xml" .repo/local_manifests/star2lte.xml
           test -f .repo/local_manifests/star2lte.xml
 
       - name: repo sync (shallow)

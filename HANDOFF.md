@@ -1,0 +1,92 @@
+# HANDOFF — star2lte LOS 22.2 (Skyshadow2020/star2lte-los22)
+
+Read this before touching anything. Last updated: 2026-09-24.
+
+## Mission
+
+Build **LineageOS 22.2 (Android 15)** for Galaxy S9+ Exynos (`star2lte`,
+SM-G965F, Exynos 9810 — the Snapdragon variant `star2qltechn` is a DIFFERENT
+device) with:
+
+1. **Kernel**: our own fork with **SUSFS v2 + KernelSU**, daily-driver stable,
+   KernelSU Manager installs and works with no tricks. Port proven pieces from
+   the `kernel-s9plus` line (audio boot-race fix = madera reset polarity +
+   supply recycle, 12/12 winning boots).
+2. **Data**: **unencrypted /data** — ROM and recovery share one readable data
+   partition. FBE must be disabled ROM-side.
+3. **Recovery**: **TWRP-based**, companion to the ROM, reading the unencrypted
+   /data (no decrypt stack needed — simpler than the Skyshadow2022 TWRP 12.1
+   FBE project).
+4. **Samsung apps**: Gallery, Camera, Notes, Samsung Account — ONLY these.
+
+## Hard rules (set by Mehran, 2026-09-24)
+
+- **Builds via GitHub Actions ONLY, on the Skyshadow2020 account.** No VPS,
+  no self-hosted runners.
+- **`Skyshadow2022/*` repos are READ-ONLY** — never push, never edit. Read
+  freely (source of the first pipeline cut + the proven kernel work).
+- Only Mehran + ZCode work in this repo — no parallel-session paranoia, but
+  still `git fetch` before pushing.
+- Persian is the chat language; docs/code are English.
+
+## Credentials & locations
+
+- Skyshadow2020 PAT: `~/.gh_token_2020` (chmod 600) — full scope incl.
+  `workflow`. Used for repo creation, push (https), Actions dispatch,
+  artifact download. **Mehran should revoke it if this project ever dies.**
+- Skyshadow2022 PAT: `~/.gh_token` (read-only use per the rule above).
+- Local prep clone of this repo: `~/Projects/star2lte-los22-sky2020-prep`.
+- Proven kernel tree (read source for the port): `~/kernel-s9plus`
+  (branch `susfs-v2-experiment`, mirrors `Skyshadow2022/kernel-s9plus-hdmi`).
+
+## Why this repo exists / provenance
+
+`Skyshadow2022/star2lte-los22` (run #1, 2026-09-23) failed at the
+`repo init + local manifest` step and never got to sync. This repo is that
+pipeline, fixed and owned by Skyshadow2020.
+
+## Bugs found in the 2022 cut (all fixed here)
+
+| # | Bug | Evidence | Fix |
+|---|-----|----------|-----|
+| 1 | `build.yml` copied the local manifest from `$GITHUB_WORKSPACE/../repo-config/` — checkout with `path: repo-config` lands at `$GITHUB_WORKSPACE/repo-config`, so `cp` hit a nonexistent path | run #1 job log: `cp: cannot stat '/home/runner/work/star2lte-los22/star2lte-los22/../repo-config/...'` | copy from `$GITHUB_WORKSPACE/repo-config/...` |
+| 2 | Manifest pinned `LineageOS/android_hardware_samsung_slsi_nfc` @ `lineage-22.2` — repo has NO such branch (only 23.0/23.1/23.2/24.0) → repo sync would die | GitHub API 404 on the branch; ExyHyperBrick's own `lineage-22.2-wip` manifest omits the project entirely | dropped the project |
+| 3 | Manifest pinned `ExyHyperBrick/..._exynos_dtbh` @ `lineage-23.2` unnecessarily — at 22.2 the `dtbhtoolExynos` tool (set via `TARGET_CUSTOM_DTBTOOL` in BoardConfigCommon.mk:81) is built from `LineageOS/android_hardware_samsung` @ `lineage-22.2` (`dtbhtool/Android.bp`) | API + file inspection | dropped the project; hardware/samsung provides the tool |
+| 4 | config/graphics HALs pulled from LineageOS instead of ExyHyperBrick's 22.2-era forks | ExyHyperBrick's `lineage-22.2-wip` manifest uses HIS forks for `slsi-linaro_config` + `slsi-linaro_graphics` | switched to his forks |
+
+`starlte`/`crownlte` device/vendor trees are NOT in the manifest (checked:
+only referenced in comments inside `proprietary-files.txt`).
+
+## Roadmap (each phase = separate CI runs, never mix too many variables)
+
+- **Phase 1 — green vanilla build** (THIS is where we are): fixed pipeline,
+  ExyHyperBrick trees as-is, LOS 22.2 zip out of CI. Acceptance: artifact
+  downloads, zip flashes via TWRP, device boots.
+- **Phase 2 — kernel fork**: fork `ExyHyperBrick/android_kernel_samsung_exynos9810`
+  @ `lineage-22.2` to `Skyshadow2020/android_kernel_samsung_exynos9810`; port
+  SUSFS v2 + KSU + madera audio fix from `~/kernel-s9plus`; manifest points at
+  the fork. KernelSU Manager installs clean.
+- **Phase 3 — unencrypted /data**: fstab + props to disable FBE ROM-side;
+  validate with a TWRP build reading /data.
+- **Phase 4 — TWRP companion recovery** for LOS 22.2 (unencrypted /data).
+- **Phase 5 — Samsung apps**: Gallery/Camera/Notes/Account only (blobs from
+  the vendor trees + priv-app overlay + needed props/sepolicy).
+- **Phase 6 — daily-driver polish**: IMS/VoLTE (krazey ImsStack) if wanted,
+  perf tuning, PITFALLS below re-audited.
+
+## Pitfalls carried over from the star2lte kernel/TWRP projects (STILL TRUE)
+
+- NEVER flash an AOSP-format `recovery.img` on Samsung — needs DTBH packing
+  (Samsung-format only). The CI's `recovery.img` artifact is NOT flashable.
+- Recovery partition flashes go through heimdall/Odin ONLY (SBL bookkeeping);
+  `dd` is fine for BOOT but forbidden for RECOVERY.
+- The kernel build: NEVER `make clean` on a warm tree; `make dtb.img` +
+  `make dtbo.img` flow for DTBH.
+- Phone grep is toybox: no `\|` BRE alternation (use `grep -E` with plain
+  `|`), no bash process substitution.
+
+## Next steps (as of this handoff)
+
+1. Dispatch `mode: build` on this repo, watch the run, fix whatever breaks.
+2. In parallel: explore `~/kernel-s9plus` integration layout (where KSU-Next
+   and SUSFS live) and draft the port series for Phase 2.
