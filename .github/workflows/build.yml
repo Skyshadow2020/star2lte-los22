@@ -121,6 +121,19 @@ jobs:
           kill $MONPID 2>/dev/null || true
           df -h /home/runner/work/los /
 
+      - name: Free .repo git objects (frees ~45G for out/)
+        if: ${{ inputs.mode == 'build' }}
+        working-directory: /home/runner/work/los
+        run: |
+          # run #9 numbers: the dieted full-shallow tree = ~100G of which
+          # .repo/project-objects is ~45-50G, leaving only 9G — out/ cannot
+          # fit. The source worktrees are complete checkouts and the build
+          # does not need git history (version stamping degrades gracefully);
+          # each runner run re-syncs from scratch anyway.
+          du -sh .repo/project-objects 2>/dev/null || true
+          rm -rf .repo/project-objects
+          df -h /
+
       - name: Disk report (always)
         if: always()
         run: df -h / /home/runner/work/los 2>/dev/null; du -sh /home/runner/work/los/.repo/project-objects 2>/dev/null || true; du -sh /home/runner/work/los/* 2>/dev/null | sort -h | tail -15 || true
