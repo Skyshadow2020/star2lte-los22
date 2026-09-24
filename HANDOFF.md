@@ -102,11 +102,25 @@ tmp PV gets fallocated out of the SAME root fs (no /mnt), overcommitting it.
 Root reserve 1024M was too small: `E: You don't have enough free space in
 /var/cache/apt/archives/` — apt runs AFTER the maximize step ate the root fs.
 
-### Run #5 — sync-mode diagnostic (current)
-Full diet (105 verified remove-projects) + 64M tmpfs at /mnt before the
-maximize action (caps the tmp PV, frees the boot swapfile, keeps the 2G
-root reserve for apt) + df monitor + always() disk report. expect: sync
-completes, df shows the real source footprint.
+### Run #7 — sync-mode diagnostic (validating, SLOW)
+The no-LVM recipe works (apt green, reclaim green), BUT `repo sync` with
+`--partial-clone --clone-filter=blob:limit=500K` is running 3h+ (latency-
+bound: partial clones fetch commit+tree objects per project with many
+round-trips). **Consequence: a cold full build CANNOT fit the 6h free-runner
+limit if sync alone eats 3h.** Run #8 (queued full build) was cancelled for
+exactly that reason.
+
+**Revised strategy (multi-run to green):**
+1. Drop partial clone → full shallow sync (`-c --no-tags`): 2-3× faster
+   wall-clock (~40-70 min for the 105-diet tree).
+2. Persist ccache between runs (actions/cache already wired); a timed-out
+   build still saves ccache (post steps run on timeout).
+3. Each run: re-sync (~1h) + build with warm ccache (~3-4h) → zip green
+   within 2-3 runner runs. Every run stays under 6h.
+4. If disk proves tight (post-diet full-shallow ≈ 65-75G + out ~45G +
+   ccache 12G vs ~107G usable), add a tier-3 diet: prebuilts/module_sdk/*,
+   unused packages/apps, external/eigen etc. — one line per repo, revert
+   on first build error naming it.
 
 ### Diet list (105 remove-projects, every name verified vs LOS 22.2 default.xml)
 7 emulator-only (goldfish/cuttlefish/emulator/qemu) + 98 more: GKI kernel
