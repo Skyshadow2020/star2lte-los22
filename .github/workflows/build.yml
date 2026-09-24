@@ -91,12 +91,11 @@ jobs:
           git config --global user.email "ci@local"
           git config --global user.name "ci"
           git config --global color.ui false
-          # partial clone: the official LOS recipe for disk-constrained hosts;
-          # without it a shallow LOS 22.2 sync alone ENOSPCs the 145G runner.
-          # No --git-lfs: nothing in a star2lte device build needs LFS and
-          # lfs pulls bypass the partial-clone blob filter.
-          repo init --depth=1 --partial-clone --clone-filter=blob:limit=500K \
-            -u https://github.com/LineageOS/android.git -b lineage-22.2
+          # Full SHALLOW sync (no partial clone): run #7 measured the partial
+          # clone at 3h+ wall-clock (latency-bound) — that alone breaks the
+          # 6h free-runner ceiling for a cold build. The 105-repo diet in the
+          # local manifest is what makes the full shallow tree fit the disk.
+          repo init --depth=1 -u https://github.com/LineageOS/android.git -b lineage-22.2
           mkdir -p .repo/local_manifests
           # actions/checkout with path: repo-config lands at
           # $GITHUB_WORKSPACE/repo-config (NOT the parent dir) — this path was
