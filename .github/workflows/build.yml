@@ -54,6 +54,9 @@ jobs:
           sudo docker image prune -a -f >/dev/null 2>&1 || true
           sudo fallocate -l 4G /build-swap && sudo chmod 600 /build-swap \
             && sudo mkswap /build-swap && sudo swapon /build-swap
+          # easimon used to create+mount the build dir; without it the
+          # working-directory of the later steps does not exist (run #6)
+          mkdir -p /home/runner/work/los
           df -h /
 
       - name: Checkout (local manifest lives here)
