@@ -87,25 +87,62 @@ only referenced in comments inside `proprietary-files.txt`).
 
 ## Run log
 
-### Run #1 (Skyshadow2020, 2026-09-24) — FAILED: ENOSPC
+### Run #1 (2026-09-24) — FAILED: ENOSPC mid-sync
+Died in `repo sync` (`android_hardware_samsung_nfc`). Runner = single 145G
+disk (NO separate /mnt). No partial clone, no diet.
 
-Died mid-`repo sync` with `No space left on device`. Diagnosis from the full
-job log:
-- The current ubuntu-24.04 free runner is a **single 145G disk** — `df` shows
-  NO separate `/mnt`. The easimon LVM therefore holds ~100G (root free minus
-  4G reserve, minus 8G swap LV).
-- A shallow LOS 22.2 sync is far bigger than the old "~30-40 GB" assumption —
-  it alone eats ~100G. No partial-clone tricks were in place.
-- Fix for run #2 (all applied):
-  - `repo init --partial-clone --clone-filter=blob:limit=500K` (official LOS
-    recipe for constrained disks),
-  - local manifest `remove-project`s the 7 emulator-only repos found in the
-    real LOS 22.2 `default.xml` (goldfish/cuttlefish/emulator/qemu — verified
-    they exist there, never referenced by a device build),
-  - `root-reserve-mb` 4096→2048, ccache 20G→12G, dropped `--force-sync`
-    (not needed on fresh syncs).
-- (A dispatch went out accidentally BEFORE this fix landed — it was cancelled
-  immediately; run #2 is the fixed one.)
+### Run #2 — cancelled (dispatched accidentally before the fix landed)
+
+### Run #3 — FAILED: ENOSPC again (same repo, ~25 min in)
+Partial clone + 7 emulator removes were NOT enough. Log showed the root fs at
+**100% / 100M free** right after the maximize step — the easimon action's
+tmp PV gets fallocated out of the SAME root fs (no /mnt), overcommitting it.
+
+### Run #4 — FAILED: apt itself (exit 100)
+Root reserve 1024M was too small: `E: You don't have enough free space in
+/var/cache/apt/archives/` — apt runs AFTER the maximize step ate the root fs.
+
+### Run #5 — sync-mode diagnostic (current)
+Full diet (105 verified remove-projects) + 64M tmpfs at /mnt before the
+maximize action (caps the tmp PV, frees the boot swapfile, keeps the 2G
+root reserve for apt) + df monitor + always() disk report. expect: sync
+completes, df shows the real source footprint.
+
+### Diet list (105 remove-projects, every name verified vs LOS 22.2 default.xml)
+7 emulator-only (goldfish/cuttlefish/emulator/qemu) + 98 more: GKI kernel
+prebuilts x12, hardware/google (pixel/gs101/gs201/zuma graphics) x14, the
+whole Car/automotive stack x27, TV apps, macOS/Windows toolchains, bazel
+rule repos, ABI dumps, packages/modules/Virtualization (3.5G), heavy
+test/fuzz tooling (autotest/AFL++/bcc). If a build ever names a missing
+project, move that one line back to a <project>.
+
+## Kernel fork (Phase 2) — DONE, on Skyshadow2020
+
+`Skyshadow2020/android_kernel_samsung_exynos9810` branch `lineage-22.2`
+(commit c45d4e50fcc; API-forked from ExyHyperBrick, delta pushed):
+- drivers/kernelsu imported as a REAL dir (81 files; the source tree used a
+  symlink into a KernelSU-Next mirror — do NOT copy the symlink).
+- Kbuild pinned: KSU_VERSION 3050 → 33250 / tag v3.3.0 (Manager v3.3.0
+  versionCode 33214 is the floor; below = "Unsupported" = the Manager
+  install problem Mehran wants avoided). A separate KSU git repo or cmdline
+  KSU_GIT_VERSION still overrides.
+- SUSFS v2.2.0: fs/susfs.c + headers copied; hooks 3-way merged into 16
+  shared files (8 clean SAME-file patch + 8 via git merge-file); the single
+  conflict (namei.c) resolved: kept susfs_def.h include, dropped the
+  Samsung-SDP include (not in this tree).
+- madera audio boot-race fix in drivers/mfd/madera-core.c (supplies+reset
+  recycle, both polarities, first SPI ID 0xffff).
+- defconfig: KSU manual-hook + full SUSFS flags appended to
+  exynos9810-star2lte_defconfig (LOCALVERSION untouched; '-ies' is not a
+  GKI-pattern uname → no VINTF trap).
+- NOT ported on purpose: DECON/DP experiments, debug instrumentation,
+  DTS changes, mem_ion/perf tuning fragments.
+- Local build test: config verified (all KSU/SUSFS flags + KPROBES off +
+  OVERLAY_FS on), build started with the golden toolchains
+  (~/toolchains/{clang,gcc-arm64}, build flags copied from
+  build_gkilike.sh incl. KSU_GIT_VERSION=3050).
+- NEXT after green build: switch the LOS local manifest kernel project to
+  `Skyshadow2020/android_kernel_samsung_exynos9810` and rebuild.
 
 ## Phase-2 kernel port — facts established (2026-09-24)
 
