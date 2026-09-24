@@ -58,4 +58,15 @@
   <project name="LineageOS/android_hardware_samsung_slsi-linaro_openmax"
            path="hardware/samsung_slsi-linaro/openmax" remote="github" revision="lineage-22.2" />
 
+  <!-- Disk diet for the single-disk GitHub free runner (145G total, no
+       separate /mnt): emulator-only repos never referenced by a real device
+       build. Run #1 died with ENOSPC mid-sync without these. -->
+  <remove-project name="LineageOS/android_device_generic_goldfish" />
+  <remove-project name="device/generic/goldfish-opengl" />
+  <remove-project name="device/google/cuttlefish" />
+  <remove-project name="device/google/cuttlefish_prebuilts" />
+  <remove-project name="device/google/cuttlefish_vmm" />
+  <remove-project name="platform/prebuilts/android-emulator" />
+  <remove-project name="platform/prebuilts/qemu-kernel" />
+
 </manifest>

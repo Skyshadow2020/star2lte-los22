@@ -2,15 +2,17 @@ name: LineageOS 22.2 star2lte
 
 # Full-ROM build for star2lte (Galaxy S9+ Exynos 9810) on GitHub Actions.
 #
-# HEAVY: a from-scratch LineageOS 22 build needs a lot of disk and time. A
-# free GitHub-hosted runner has a 6-hour job limit and ~14 GB free disk; the
-# maximize-build-space step below reclaims ~65-75 GB, and a shallow sync keeps
-# the source ~30-40 GB, but a cold full build can still exceed 6 h on the free
-# runner's 2-4 vCPUs. Options if it does:
-#   - re-run with input `mode: build`: ccache is persisted between runs, so
-#     the second pass reuses everything that compiled in run #1;
-#   - run with input `mode: sync` first (just fetch source, well under 6 h),
-#     then `mode: build` on a warm ccache.
+# HEAVY: a from-scratch LineageOS 22 build needs a lot of disk and time.
+#
+# DISK — run #1 lesson (Skyshadow2020 run #1): the ubuntu-24.04 free runner is
+# a SINGLE 145G disk (no separate /mnt anymore) and a shallow LOS 22.2 sync
+# alone fills ~100G. Two levers keep it alive:
+#   1. `--partial-clone --clone-filter=blob:limit=500K` (the official LOS
+#      recommendation for constrained disks) — blobs download on demand.
+#   2. the local manifest remove-projects the emulator-only repos
+#      (cuttlefish/emulator/qemu/goldfish — never referenced by a real build).
+# A cold full build can still exceed the 6h free-runner limit; ccache is
+# persisted between runs, so a re-run reuses everything that compiled.
 #
 # GitHub Actions ONLY for this project — no self-hosted/VPS runners.
 
@@ -40,7 +42,7 @@ jobs:
       - name: Maximize build space
         uses: easimon/maximize-build-space@v10
         with:
-          root-reserve-mb: 4096
+          root-reserve-mb: 2048
           swap-size-mb: 8192
           remove-dotnet: "true"
           remove-android: "true"
@@ -81,7 +83,10 @@ jobs:
           git config --global user.email "ci@local"
           git config --global user.name "ci"
           git config --global color.ui false
-          repo init --depth=1 -u https://github.com/LineageOS/android.git -b lineage-22.2 --git-lfs
+          # partial clone: the official LOS recipe for disk-constrained hosts;
+          # without it a shallow LOS 22.2 sync alone ENOSPCs the 145G runner
+          repo init --depth=1 --partial-clone --clone-filter=blob:limit=500K \
+            -u https://github.com/LineageOS/android.git -b lineage-22.2 --git-lfs
           mkdir -p .repo/local_manifests
           # actions/checkout with path: repo-config lands at
           # $GITHUB_WORKSPACE/repo-config (NOT the parent dir) — this path was
@@ -93,7 +98,7 @@ jobs:
         working-directory: /home/runner/work/los
         run: |
           repo sync -c --no-clone-bundle --no-tags --optimized-fetch \
-            --prune --force-sync -j"$(nproc)" || \
+            --prune -j"$(nproc)" || \
           repo sync -c --no-clone-bundle --no-tags -j4
           df -h /home/runner/work/los
 
@@ -104,7 +109,7 @@ jobs:
           CCACHE_DIR: /home/runner/work/los/.ccache
           CCACHE_EXEC: /usr/bin/ccache
         run: |
-          ccache -M 20G
+          ccache -M 12G
           export USE_CCACHE=1
           export ALLOW_MISSING_DEPENDENCIES=true
           source build/envsetup.sh

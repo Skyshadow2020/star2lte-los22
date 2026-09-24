@@ -85,7 +85,54 @@ only referenced in comments inside `proprietary-files.txt`).
 - Phone grep is toybox: no `\|` BRE alternation (use `grep -E` with plain
   `|`), no bash process substitution.
 
+## Run log
+
+### Run #1 (Skyshadow2020, 2026-09-24) — FAILED: ENOSPC
+
+Died mid-`repo sync` with `No space left on device`. Diagnosis from the full
+job log:
+- The current ubuntu-24.04 free runner is a **single 145G disk** — `df` shows
+  NO separate `/mnt`. The easimon LVM therefore holds ~100G (root free minus
+  4G reserve, minus 8G swap LV).
+- A shallow LOS 22.2 sync is far bigger than the old "~30-40 GB" assumption —
+  it alone eats ~100G. No partial-clone tricks were in place.
+- Fix for run #2 (all applied):
+  - `repo init --partial-clone --clone-filter=blob:limit=500K` (official LOS
+    recipe for constrained disks),
+  - local manifest `remove-project`s the 7 emulator-only repos found in the
+    real LOS 22.2 `default.xml` (goldfish/cuttlefish/emulator/qemu — verified
+    they exist there, never referenced by a device build),
+  - `root-reserve-mb` 4096→2048, ccache 20G→12G, dropped `--force-sync`
+    (not needed on fresh syncs).
+- (A dispatch went out accidentally BEFORE this fix landed — it was cancelled
+  immediately; run #2 is the fixed one.)
+
+## Phase-2 kernel port — facts established (2026-09-24)
+
+- `~/kernel-s9plus` (git root; mirrors `Skyshadow2022/kernel-s9plus-hdmi`,
+  branch `susfs-v2-experiment`) is a META repo: the kernel tree lives in
+  `kernel_source/`, with `configs/{kernelsu,susfs}.fragment`, `module-susfs/`
+  (userspace susfs tool), `out_ksu/` (Manager APKs incl. Next v3.3.0),
+  `build_gkilike.sh` as the build driver.
+- Kernel base = 4.9.337 — SAME sublevel as ExyHyperBrick's lineage-22.2.
+- `drivers/kernelsu` (KSU-Next with core/feature/compat) + `fs/susfs.c` +
+  `include/linux/susfs{,_def}.h` present in our tree; 13 ksu/susfs commits +
+  the audio-race series to port.
+- LOS device tree calls for `exynos9810-star2lte_defconfig`
+  (ehb-star2lte/BoardConfig.mk:10) — our tree already HAS that defconfig.
+- **NO shared git history** between our kernel repo and ExyHyperBrick's
+  (merge-base fails; his tree carries ~660k samsung upstream commits, ours is
+  a 56-commit line). Port must be file-level: copy the new-file sets
+  (drivers/kernelsu, fs/susfs.c, susfs headers, module glue) and 3-way-apply
+  our diffs for shared files (fs/*, kernel/*, drivers/{Makefile,Kconfig},
+  security/*, defconfig fragments, sound/soc/codecs/madera*).
+- Start the fork defconfig from HIS `exynos9810-star2lte_defconfig` (A15-
+  tested) and merge in our susfs/ksu fragments, NOT the other way around.
+
 ## Next steps (as of this handoff)
+
+1. Run #2 (fixed) dispatched — watch sync `df -h` output for the real source
+   footprint with partial clone, then whether the full build fits.
 
 1. Dispatch `mode: build` on this repo, watch the run, fix whatever breaks.
 2. In parallel: explore `~/kernel-s9plus` integration layout (where KSU-Next
