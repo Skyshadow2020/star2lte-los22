@@ -42,8 +42,8 @@ jobs:
       - name: Maximize build space
         uses: easimon/maximize-build-space@v10
         with:
-          root-reserve-mb: 2048
-          swap-size-mb: 8192
+          root-reserve-mb: 1024
+          swap-size-mb: 4096
           remove-dotnet: "true"
           remove-android: "true"
           remove-haskell: "true"
@@ -84,9 +84,11 @@ jobs:
           git config --global user.name "ci"
           git config --global color.ui false
           # partial clone: the official LOS recipe for disk-constrained hosts;
-          # without it a shallow LOS 22.2 sync alone ENOSPCs the 145G runner
+          # without it a shallow LOS 22.2 sync alone ENOSPCs the 145G runner.
+          # No --git-lfs: nothing in a star2lte device build needs LFS and
+          # lfs pulls bypass the partial-clone blob filter.
           repo init --depth=1 --partial-clone --clone-filter=blob:limit=500K \
-            -u https://github.com/LineageOS/android.git -b lineage-22.2 --git-lfs
+            -u https://github.com/LineageOS/android.git -b lineage-22.2
           mkdir -p .repo/local_manifests
           # actions/checkout with path: repo-config lands at
           # $GITHUB_WORKSPACE/repo-config (NOT the parent dir) — this path was
@@ -94,13 +96,27 @@ jobs:
           cp "$GITHUB_WORKSPACE/repo-config/.repo-local-manifests/star2lte.xml" .repo/local_manifests/star2lte.xml
           test -f .repo/local_manifests/star2lte.xml
 
-      - name: repo sync (shallow)
+      - name: repo sync (shallow, monitored)
         working-directory: /home/runner/work/los
         run: |
+          # disk growth monitor: runs #1/#3 died mid-sync with no clue where
+          # the bytes went; this logs the real curve and survives the failure
+          (
+            while true; do
+              echo "$(date +%H:%M:%S) los=$(df -B1 --output=used /home/runner/work/los | tail -1 | tr -d ' ') root_used=$(df -B1 --output=used / | tail -1 | tr -d ' ') root_avail=$(df -B1 --output=avail / | tail -1 | tr -d ' ')"
+              sleep 20
+            done
+          ) &
+          MONPID=$!
           repo sync -c --no-clone-bundle --no-tags --optimized-fetch \
             --prune -j"$(nproc)" || \
           repo sync -c --no-clone-bundle --no-tags -j4
-          df -h /home/runner/work/los
+          kill $MONPID 2>/dev/null || true
+          df -h /home/runner/work/los /
+
+      - name: Disk report (always)
+        if: always()
+        run: df -h / /home/runner/work/los 2>/dev/null; du -sh /home/runner/work/los/.repo/project-objects 2>/dev/null || true; du -sh /home/runner/work/los/* 2>/dev/null | sort -h | tail -15 || true
 
       - name: Build ROM
         if: ${{ inputs.mode == 'build' }}
