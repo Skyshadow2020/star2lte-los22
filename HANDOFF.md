@@ -116,33 +116,39 @@ rule repos, ABI dumps, packages/modules/Virtualization (3.5G), heavy
 test/fuzz tooling (autotest/AFL++/bcc). If a build ever names a missing
 project, move that one line back to a <project>.
 
-## Kernel fork (Phase 2) — DONE, on Skyshadow2020
+## Kernel fork (Phase 2) — GREEN BUILD, on Skyshadow2020
 
 `Skyshadow2020/android_kernel_samsung_exynos9810` branch `lineage-22.2`
-(commit c45d4e50fcc; API-forked from ExyHyperBrick, delta pushed):
-- drivers/kernelsu imported as a REAL dir (81 files; the source tree used a
-  symlink into a KernelSU-Next mirror — do NOT copy the symlink).
-- Kbuild pinned: KSU_VERSION 3050 → 33250 / tag v3.3.0 (Manager v3.3.0
-  versionCode 33214 is the floor; below = "Unsupported" = the Manager
-  install problem Mehran wants avoided). A separate KSU git repo or cmdline
-  KSU_GIT_VERSION still overrides.
-- SUSFS v2.2.0: fs/susfs.c + headers copied; hooks 3-way merged into 16
-  shared files (8 clean SAME-file patch + 8 via git merge-file); the single
-  conflict (namei.c) resolved: kept susfs_def.h include, dropped the
-  Samsung-SDP include (not in this tree).
-- madera audio boot-race fix in drivers/mfd/madera-core.c (supplies+reset
-  recycle, both polarities, first SPI ID 0xffff).
-- defconfig: KSU manual-hook + full SUSFS flags appended to
-  exynos9810-star2lte_defconfig (LOCALVERSION untouched; '-ies' is not a
-  GKI-pattern uname → no VINTF trap).
-- NOT ported on purpose: DECON/DP experiments, debug instrumentation,
-  DTS changes, mem_ion/perf tuning fragments.
-- Local build test: config verified (all KSU/SUSFS flags + KPROBES off +
-  OVERLAY_FS on), build started with the golden toolchains
-  (~/toolchains/{clang,gcc-arm64}, build flags copied from
-  build_gkilike.sh incl. KSU_GIT_VERSION=3050).
-- NEXT after green build: switch the LOS local manifest kernel project to
-  `Skyshadow2020/android_kernel_samsung_exynos9810` and rebuild.
+(API-fork of ExyHyperBrick; 3 commits: c45d4e50fcc port + 81228701414 hooks +
+37a933343ed path_umount backport). **Local build: GREEN** (Image.gz 11.3MB,
+0 errors, System.map has 215 ksu_ + 67 susfs_ symbols + madera_dev_init).
+The LOS manifest now points the kernel project at this fork (commit 4d62139).
+
+Port gotchas learned (all hit, all fixed):
+- **KSU manual hooks live in the PRE-HISTORY of kernel-s9plus** (root commit
+  carried them) — root..HEAD diffs never show them. The Kbuild greps for
+  `ksu_handle_sys_reboot` in kernel/reboot.c and refuses to build otherwise
+  ("No hooks were defined"). Port = curated his→ours hunks (ksu-only) into
+  fs/{exec,open,read_write}.c, kernel/reboot.c, drivers/input/input.c.
+  Skipped on purpose: LOD_SEC, FSCRYPT_SDP, reboot_cpu kstrtoint refactor,
+  WRITE_LIFE line, input EXPORT_SYMBOLs.
+- **path_umount/can_umount**: KSU's kernel_umount feature needs them on 4.9;
+  the Kbuild normally sed-injects them at drivers/kernelsu parse time —
+  AFTER fs/namespace.o compiled → fresh trees fail at vmlinux link with
+  "undefined reference to path_umount". Committed the backport directly
+  (fs/namespace.c + fs/internal.h prototype); Kbuild's grep guards skip it.
+- KSU Kbuild pinned (injected block) to KSU_VERSION=3050 → **33250** /
+  tag v3.3.0 — Manager v3.3.0 versionCode 33214 is the floor.
+- drivers/kernelsu must be a REAL dir (source tree used a symlink into a
+  KernelSU-Next mirror — copying the symlink produces a dangling path).
+
+Build recipe (validated): toolchains `~/toolchains/{clang,gcc-arm64}`,
+```
+make O=$HOME/Projects/fork-out ARCH=arm64 CC=clang \
+  CROSS_COMPILE=aarch64-linux-android- CLANG_TRIPLE=aarch64-linux-gnu- \
+  KSU_GIT_VERSION=3050 KSU_GIT_VERSION_VALID=1 KSU_GIT_TAG=v3.3.0 \
+  exynos9810-star2lte_defconfig && make ... -j4 Image.gz dtbs
+```
 
 ## Phase-2 kernel port — facts established (2026-09-24)
 
