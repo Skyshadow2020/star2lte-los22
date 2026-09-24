@@ -39,28 +39,22 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
-      # Run #4 lesson: this runner image has NO separate /mnt disk, so the
-      # maximize action fallocates its tmp PV out of the SAME root fs it
-      # already carved the root PV from — the root fs lands at 100% and even
-      # apt (post-maximize) ENOSPCs. Contain the tmp PV in a 64M tmpfs and
-      # free the boot swapfile; the action recreates swap inside the LVM.
-      - name: Contain tmp PV (no separate /mnt disk on this image)
+      # Runs #1-#5 lesson chain: this runner image has a SINGLE 145G disk (no
+      # separate /mnt), which breaks easimon/maximize-build-space's LVM math:
+      # the tmp PV gets fallocated out of the same root fs (root at 100%),
+      # and with a small tmpfs the action dies outright (fallocate: invalid
+      # length). LVM buys nothing on a single-disk runner — do the reclaim
+      # by hand and build directly on the root fs.
+      - name: Reclaim root disk (manual, no LVM)
         run: |
           sudo swapoff -a || true
-          sudo rm -f /mnt/swapfile || true
-          sudo mount -t tmpfs -o size=64M tmpfs /mnt
-
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@v10
-        with:
-          root-reserve-mb: 2048
-          swap-size-mb: 4096
-          remove-dotnet: "true"
-          remove-android: "true"
-          remove-haskell: "true"
-          remove-codeql: "true"
-          remove-docker-images: "true"
-          build-mount-path: /home/runner/work/los
+          sudo rm -f /swapfile /mnt/swapfile || true
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          sudo docker image prune -a -f >/dev/null 2>&1 || true
+          sudo fallocate -l 4G /build-swap && sudo chmod 600 /build-swap \
+            && sudo mkswap /build-swap && sudo swapon /build-swap
+          df -h /
 
       - name: Checkout (local manifest lives here)
         uses: actions/checkout@v4
