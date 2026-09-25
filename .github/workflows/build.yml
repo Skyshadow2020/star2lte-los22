@@ -115,7 +115,7 @@ jobs:
           # the bytes went; this logs the real curve and survives the failure
           (
             while true; do
-              echo "$(date +%H:%M:%S) los=$(df -B1 --output=used /home/runner/work/los | tail -1 | tr -d ' ') root_used=$(df -B1 --output=used / | tail -1 | tr -d ' ') root_avail=$(df -B1 --output=avail / | tail -1 | tr -d ' ')"
+              echo "$(date +%H:%M:%S) los=$(df -B1 --output=used /home/runner/work/los | tail -1 | tr -d ' ') root_avail=$(df -B1 --output=avail / | tail -1 | tr -d ' ') mem_avail_mb=$(free -m | awk '/Mem:/{print $7}') swap_used_mb=$(free -m | awk '/Swap:/{print $3}')"
               sleep 20
             done
           ) &
@@ -125,26 +125,6 @@ jobs:
           repo sync -c --no-clone-bundle --no-tags -j4
           kill $MONPID 2>/dev/null || true
           df -h /home/runner/work/los /
-
-      - name: Free .repo pack files (frees ~45G for out/)
-        if: ${{ inputs.mode == 'build' }}
-        working-directory: /home/runner/work/los
-        run: |
-          # run #9: dieted full-shallow tree = ~100G, only 9G free — out/ cannot
-          # fit. run #10 lesson: deleting .repo/project-objects WHOLESALE breaks
-          # repo's ref state and breakfast/roomservice re-downloads the ENTIRE
-          # tree (1.5h + 17G). Delete only the pack files: refs and configs
-          # survive, so `repo sync` stays a fast no-op, and ~45G of compressed
-          # history nobody reads during a build goes away. Known trade-off:
-          # git-object reads inside source trees fail (version stamping
-          # degrades); the build itself does not need them.
-          du -sh .repo/project-objects 2>/dev/null || true
-          find .repo/project-objects -type f \( -name "*.pack" -o -name "*.idx" -o -name "*.keep" \) -delete
-          df -h /
-
-      - name: Disk report (always)
-        if: always()
-        run: df -h / /home/runner/work/los 2>/dev/null; du -sh /home/runner/work/los/.repo/project-objects 2>/dev/null || true; du -sh /home/runner/work/los/* 2>/dev/null | sort -h | tail -15 || true
 
       - name: Build ROM
         if: ${{ inputs.mode == 'build' }}
@@ -157,8 +137,20 @@ jobs:
           export USE_CCACHE=1
           export ALLOW_MISSING_DEPENDENCIES=true
           source build/envsetup.sh
+          # breakfast FIRST: its roomservice repo sync needs the git object
+          # stores intact — with packs deleted, repo's rev-parse fails and it
+          # re-downloads the ENTIRE tree (~17G, 25 min; runs #10/#12/#13)
           breakfast star2lte ${{ inputs.variant }}
+          # prune AFTER breakfast: soong/ninja do not read git objects, only
+          # refs/configs which stay. Frees ~45G for out/.
+          du -sh .repo/project-objects 2>/dev/null || true
+          find .repo/project-objects -type f \( -name "*.pack" -o -name "*.idx" -o -name "*.keep" \) -delete
+          df -h /
           mka bacon -j"$(nproc)"
+
+      - name: Disk report (always)
+        if: always()
+        run: df -h / /home/runner/work/los 2>/dev/null; du -sh /home/runner/work/los/.repo/project-objects 2>/dev/null || true; du -sh /home/runner/work/los/* 2>/dev/null | sort -h | tail -15 || true
 
       - name: Collect artifacts
         if: ${{ inputs.mode == 'build' }}
