@@ -124,11 +124,26 @@ for out/.
 3. actions/cache post-save skips on failed jobs by default →
    `save-always: true` added (the multi-run strategy depends on it).
 
-### Run #11 — build with the final disk recipe (current)
-Post-sync prune = **pack/idx files only** (refs survive → `repo sync` stays a
-fast no-op; ~45G freed for out/). Expected: sync ~20 min → prune → soong +
-build with the fork kernel until the 6h wall; ccache saves either way; the
-next run continues warm.
+### Run #11 — build: trivial duplicate-path manifest bug (my re-add of
+pixel/interfaces on top of default.xml's own projects) → fixed in f0dbb8e.
+
+### Runs #12/#13/#14 — killed ~6-8 min into soong_build analysis, 3× in a row
+- "The runner has received a shutdown signal" — memory looked FINE at the
+  last monitor sample (14.6G avail, 69MB swap) BUT the sync-step monitor
+  dies with its step, so there was ZERO memory data during soong itself.
+- #14 also proved the pack-prune must come AFTER breakfast: with packs gone,
+  breakfast's roomservice re-downloaded the whole tree again (df curve +
+  "repo sync has finished successfully" mid-build).
+- Run #14 fix set: prune moved after breakfast, build step runs its OWN
+  monitor (df+free every 20s until step end), tier-3 diet added (24
+  prebuilts/module_sdk/* + external/{eigen,chromium-trace} = 127 removes)
+  to shrink soong's module graph, swap upgraded to 12G post-prune.
+
+### Run #15 — build with diet + live memory telemetry (current)
+Decision tree: dies with mem_avail→0 ⇒ OOM (diet should have helped; if not,
+shrink further). Dies with memory fine ⇒ GH-side kill (abuse/infra) — pivot
+to split/slim strategies. Reaches ninja ⇒ whatever killed #12-14 is gone;
+expect a 6h timeout on cold compile with ccache saved, rerun warm.
 
 ### Diet list (105 remove-projects, every name verified vs LOS 22.2 default.xml)
 7 emulator-only (goldfish/cuttlefish/emulator/qemu) + 98 more: GKI kernel
