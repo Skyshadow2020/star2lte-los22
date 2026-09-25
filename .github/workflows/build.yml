@@ -136,6 +136,8 @@ jobs:
           ccache -M 12G
           export USE_CCACHE=1
           export ALLOW_MISSING_DEPENDENCIES=true
+          # compile+package faster and smaller: dexopt runs on first boot
+          export WITH_DEXPREOPT=false
           # own monitor: the sync-step monitor dies with its step, and runs
           # #12-#14 were killed mid-soong with NO memory data — this one
           # covers breakfast/soong/ninja until the step ends
@@ -146,6 +148,30 @@ jobs:
             done
           ) &
           MONPID=$!
+          # survivor telemetry: run #16 died HARD at ~5.5h (agent gone, logs
+          # BlobNotFound, ccache never saved). Push a progress snapshot to the
+          # build-status branch every 10 min so any death still leaves the
+          # last known ninja %, disk and memory behind.
+          (
+            cd "$GITHUB_WORKSPACE/repo-config"
+            git config user.email "ci@local" ; git config user.name "ci"
+            git switch -C build-status 2>/dev/null || git switch build-status
+            while true; do
+              {
+                echo "## run ${{ github.run_number }} $(date -u +%H:%M:%S)"
+                echo '```'
+                df -h / | tail -1
+                free -m | head -2
+                N=$(tail -c 200000 /tmp/mka.log 2>/dev/null | grep -oE "\[ *[0-9]+% [0-9]+/[0-9]+\]" | tail -1)
+                echo "ninja: ${N:-starting}"
+                echo '```'
+              } > status.md
+              git add status.md >/dev/null 2>&1
+              git commit -qm "status ${{ github.run_number }}: ${N:-boot}" >/dev/null 2>&1
+              git push -q -f origin build-status >/dev/null 2>&1
+              sleep 600
+            done
+          ) &
           source build/envsetup.sh
           # breakfast FIRST: its roomservice repo sync needs the git object
           # stores intact — with packs deleted, repo's rev-parse fails and it
@@ -164,8 +190,9 @@ jobs:
             && sudo mkswap /build-swap && sudo swapon /build-swap
           df -h /
           free -m
-          mka bacon -j"$(nproc)"
+          mka bacon -j"$(nproc)" 2>&1 | tee /tmp/mka.log
           kill $MONPID 2>/dev/null || true
+          STATUSPID=$(pgrep -f "sleep 600" | head -1); kill $STATUSPID 2>/dev/null || true
 
       - name: Disk report (always)
         if: always()
