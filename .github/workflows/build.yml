@@ -84,6 +84,9 @@ jobs:
           path: /home/runner/work/los/.ccache
           key: ccache-los22-star2lte-${{ github.run_id }}
           restore-keys: ccache-los22-star2lte-
+          # multi-run strategy: a timed-out build MUST still save its ccache
+          # (default post-if is success(), which skips the save on failure)
+          save-always: true
 
       - name: repo init + local manifest
         working-directory: /home/runner/work/los
@@ -121,17 +124,20 @@ jobs:
           kill $MONPID 2>/dev/null || true
           df -h /home/runner/work/los /
 
-      - name: Free .repo git objects (frees ~45G for out/)
+      - name: Free .repo pack files (frees ~45G for out/)
         if: ${{ inputs.mode == 'build' }}
         working-directory: /home/runner/work/los
         run: |
-          # run #9 numbers: the dieted full-shallow tree = ~100G of which
-          # .repo/project-objects is ~45-50G, leaving only 9G — out/ cannot
-          # fit. The source worktrees are complete checkouts and the build
-          # does not need git history (version stamping degrades gracefully);
-          # each runner run re-syncs from scratch anyway.
+          # run #9: dieted full-shallow tree = ~100G, only 9G free — out/ cannot
+          # fit. run #10 lesson: deleting .repo/project-objects WHOLESALE breaks
+          # repo's ref state and breakfast/roomservice re-downloads the ENTIRE
+          # tree (1.5h + 17G). Delete only the pack files: refs and configs
+          # survive, so `repo sync` stays a fast no-op, and ~45G of compressed
+          # history nobody reads during a build goes away. Known trade-off:
+          # git-object reads inside source trees fail (version stamping
+          # degrades); the build itself does not need them.
           du -sh .repo/project-objects 2>/dev/null || true
-          rm -rf .repo/project-objects
+          find .repo/project-objects -type f \( -name "*.pack" -o -name "*.idx" -o -name "*.keep" \) -delete
           df -h /
 
       - name: Disk report (always)
