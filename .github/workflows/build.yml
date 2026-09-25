@@ -136,8 +136,6 @@ jobs:
           ccache -M 12G
           export USE_CCACHE=1
           export ALLOW_MISSING_DEPENDENCIES=true
-          # compile+package faster and smaller: dexopt runs on first boot
-          export WITH_DEXPREOPT=false
           # own monitor: the sync-step monitor dies with its step, and runs
           # #12-#14 were killed mid-soong with NO memory data — this one
           # covers breakfast/soong/ninja until the step ends
@@ -190,9 +188,16 @@ jobs:
             && sudo mkswap /build-swap && sudo swapon /build-swap
           df -h /
           free -m
-          mka bacon -j"$(nproc)" 2>&1 | tee /tmp/mka.log
+          # graceful time bomb: stop mka at 4h so the job (and its ccache
+          # post-save) completes INSIDE the 6h wall on every run. Each run
+          # banks ~4h of compiles; the next run continues warm. (#16 got 5.5h
+          # of compiling and lost ALL of it to a hard runner death.)
+          timeout --signal=INT 240m mka bacon -j"$(nproc)" 2>&1 | tee /tmp/mka.log || \
+            { echo "mka ended (timeout or failure) - banking ccache for the next run"; }
           kill $MONPID 2>/dev/null || true
-          STATUSPID=$(pgrep -f "sleep 600" | head -1); kill $STATUSPID 2>/dev/null || true
+          pkill -f "sleep 600" 2>/dev/null || true
+          tail -c 200000 /tmp/mka.log | grep -oE "\[ *[0-9]+% [0-9]+/[0-9]+\]" | tail -1 > /tmp/ninja-last.txt || true
+          cat /tmp/ninja-last.txt || true
 
       - name: Disk report (always)
         if: always()
