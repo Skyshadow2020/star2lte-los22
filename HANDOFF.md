@@ -139,11 +139,20 @@ pixel/interfaces on top of default.xml's own projects) → fixed in f0dbb8e.
   prebuilts/module_sdk/* + external/{eigen,chromium-trace} = 127 removes)
   to shrink soong's module graph, swap upgraded to 12G post-prune.
 
-### Run #15 — build with diet + live memory telemetry (current)
-Decision tree: dies with mem_avail→0 ⇒ OOM (diet should have helped; if not,
-shrink further). Dies with memory fine ⇒ GH-side kill (abuse/infra) — pivot
-to split/slim strategies. Reaches ninja ⇒ whatever killed #12-14 is gone;
-expect a 6h timeout on cold compile with ccache saved, rerun warm.
+### Run #15 — **OOM CONFIRMED**; soong now survives; first real soong error
+The in-build monitor caught it: during soong_build, mem_avail crashed to
+~1G with 12.2G swap used (**~27G total** — that is what killed #12-#14 whose
+swap was 4-8G). The module_sdk diet + 12G swap carried soong PAST the peak
+(no more runner kills) and the build then failed cleanly on:
+`trusty/vendor/google/aosp/scripts/Android.bp: missing dependency on
+trusty_dirgroup_..._libhypervisor_backends` — a dirgroup from the removed
+packages/modules/Virtualization.
+
+### Run #16 — build with the trusty stack removed (current)
+Instead of restoring the 3.5G Virtualization tree: the whole trusty stack
+(24 repos) is removed (device trees reference trusty ZERO times). Diet now
+151 remove-projects. soong memory: watch the monitor — if mem_avail hits ~0
+again, next lever = even smaller graph or --soong-only splits.
 
 ### Diet list (105 remove-projects, every name verified vs LOS 22.2 default.xml)
 7 emulator-only (goldfish/cuttlefish/emulator/qemu) + 98 more: GKI kernel
