@@ -102,25 +102,33 @@ tmp PV gets fallocated out of the SAME root fs (no /mnt), overcommitting it.
 Root reserve 1024M was too small: `E: You don't have enough free space in
 /var/cache/apt/archives/` — apt runs AFTER the maximize step ate the root fs.
 
-### Run #7 — sync-mode diagnostic (validating, SLOW)
-The no-LVM recipe works (apt green, reclaim green), BUT `repo sync` with
-`--partial-clone --clone-filter=blob:limit=500K` is running 3h+ (latency-
-bound: partial clones fetch commit+tree objects per project with many
-round-trips). **Consequence: a cold full build CANNOT fit the 6h free-runner
-limit if sync alone eats 3h.** Run #8 (queued full build) was cancelled for
-exactly that reason.
+### Run #7 — CANCELLED: partial clone is latency-bound (3h+, no end in sight)
+The no-LVM recipe worked (apt green, reclaim green), but `repo sync` with
+`--partial-clone --clone-filter=blob:limit=500K` ran 4.5h+ without finishing.
+With the 6h runner ceiling that path is a dead end → cancelled, run #8
+(queued full build) cancelled too.
 
-**Revised strategy (multi-run to green):**
-1. Drop partial clone → full shallow sync (`-c --no-tags`): 2-3× faster
-   wall-clock (~40-70 min for the 105-diet tree).
-2. Persist ccache between runs (actions/cache already wired); a timed-out
-   build still saves ccache (post steps run on timeout).
-3. Each run: re-sync (~1h) + build with warm ccache (~3-4h) → zip green
-   within 2-3 runner runs. Every run stays under 6h.
-4. If disk proves tight (post-diet full-shallow ≈ 65-75G + out ~45G +
-   ccache 12G vs ~107G usable), add a tier-3 diet: prebuilts/module_sdk/*,
-   unused packages/apps, external/eigen etc. — one line per repo, revert
-   on first build error naming it.
+### Run #9 — sync-mode GREEN: sync = 20 min, tree = ~100G
+Full-shallow sync (no partial clone) over the dieted manifest: **~20 minutes
+wall** and clean. Tree 136G used / 9.3G free — the SOURCE fits, nothing left
+for out/.
+
+### Run #10 — build, three lessons
+1. **Deleting .repo/project-objects wholesale = trap**: breakfast/roomservice
+   re-downloaded the ENTIRE tree (1.5h, +17G per the df monitor) because
+   repo's ref state vanished with the gitdirs, then died on a transient
+   GnuTLS network error (frameworks/opt/net/wifi tag fetch).
+2. **Namespace diet errors**: hardware/samsung's Android.bp imports namespace
+   `hardware/google/pixel`; hardware/qcom/sm8150/display imports
+   `hardware/google/interfaces`. Both restored (diet 105→103 repos).
+3. actions/cache post-save skips on failed jobs by default →
+   `save-always: true` added (the multi-run strategy depends on it).
+
+### Run #11 — build with the final disk recipe (current)
+Post-sync prune = **pack/idx files only** (refs survive → `repo sync` stays a
+fast no-op; ~45G freed for out/). Expected: sync ~20 min → prune → soong +
+build with the fork kernel until the 6h wall; ccache saves either way; the
+next run continues warm.
 
 ### Diet list (105 remove-projects, every name verified vs LOS 22.2 default.xml)
 7 emulator-only (goldfish/cuttlefish/emulator/qemu) + 98 more: GKI kernel
