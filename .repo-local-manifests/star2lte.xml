@@ -211,4 +211,33 @@
   <remove-project name="platform/external/eigen" />
   <remove-project name="platform/external/chromium-trace" />
 
+  <!-- tier 4: run #15 — trusty's lk.elf genrules need a dirgroup from
+       packages/modules/Virtualization (removed); the whole trusty stack is
+       unused by star2lte (device trees reference it zero times) — remove it
+       instead of restoring the 3.5G Virtualization tree. -->
+  <remove-project name="trusty/external/trusted-firmware-a" />
+  <remove-project name="trusty/external/trusty" />
+  <remove-project name="trusty/external/headers" />
+  <remove-project name="trusty/lk/common" />
+  <remove-project name="trusty/external/musl" />
+  <remove-project name="trusty/device/arm/generic-arm64" />
+  <remove-project name="trusty/device/arm/vexpress-a15" />
+  <remove-project name="trusty/device/nxp/imx7d" />
+  <remove-project name="trusty/device/x86/generic-x86_64" />
+  <remove-project name="trusty/lk/nxp" />
+  <remove-project name="trusty/host/common" />
+  <remove-project name="trusty/lk/trusty" />
+  <remove-project name="trusty/app/authmgr" />
+  <remove-project name="trusty/app/avb" />
+  <remove-project name="trusty/app/cast-auth" />
+  <remove-project name="trusty/app/confirmationui" />
+  <remove-project name="trusty/app/gatekeeper" />
+  <remove-project name="trusty/app/keymaster" />
+  <remove-project name="trusty/app/keymint" />
+  <remove-project name="trusty/app/sample" />
+  <remove-project name="trusty/app/secretkeeper" />
+  <remove-project name="trusty/app/storage" />
+  <remove-project name="trusty/lib" />
+  <remove-project name="trusty/vendor/google/aosp" />
+
 </manifest>
