@@ -49,11 +49,8 @@
            path="device/samsung_slsi/sepolicy" remote="github" revision="lineage-22.2" />
   <!-- run #10 lesson: hardware/samsung's Android.bp imports the namespace
        hardware/google/pixel, and hardware/qcom/sm8150/display imports
-       hardware/google/interfaces — these two CANNOT be dieted. -->
-  <project name="LineageOS/android_hardware_google_pixel"
-           path="hardware/google/pixel" remote="github" revision="lineage-22.2" />
-  <project name="platform/hardware/google/interfaces"
-           path="hardware/google/interfaces" remote="aosp" revision="refs/tags/android-15.0.0_r32" />
+       hardware/google/interfaces — these two CANNOT be dieted (their
+       remove-project lines were dropped; the default.xml projects stay). -->
   <project name="LineageOS/android_hardware_samsung"
            path="hardware/samsung" remote="github" revision="lineage-22.2" />
   <project name="ExyHyperBrick/android_hardware_samsung_slsi-linaro_config"
