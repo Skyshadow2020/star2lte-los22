@@ -182,4 +182,33 @@
   <remove-project name="LineageOS/android_device_google_contexthub" />
   <remove-project name="LineageOS/android_packages_apps_TV" />
 
+  <!-- tier 3: run #12-#14 runner kills during soong bootstrap — shrink the
+       soong module graph. The 24 prebuilts/module_sdk/* prebuilt mainline SDKs
+       are not consumed by device builds (LOS builds modules from source), and
+       these two externals are unused by star2lte. -->
+  <remove-project name="platform/prebuilts/module_sdk/art" />
+  <remove-project name="platform/prebuilts/module_sdk/AdServices" />
+  <remove-project name="platform/prebuilts/module_sdk/AppSearch" />
+  <remove-project name="platform/prebuilts/module_sdk/Bluetooth" />
+  <remove-project name="platform/prebuilts/module_sdk/conscrypt" />
+  <remove-project name="platform/prebuilts/module_sdk/ConfigInfrastructure" />
+  <remove-project name="platform/prebuilts/module_sdk/Connectivity" />
+  <remove-project name="platform/prebuilts/module_sdk/CrashRecovery" />
+  <remove-project name="platform/prebuilts/module_sdk/DeviceLock" />
+  <remove-project name="platform/prebuilts/module_sdk/HealthFitness" />
+  <remove-project name="platform/prebuilts/module_sdk/IPsec" />
+  <remove-project name="platform/prebuilts/module_sdk/Media" />
+  <remove-project name="platform/prebuilts/module_sdk/MediaProvider" />
+  <remove-project name="platform/prebuilts/module_sdk/OnDevicePersonalization" />
+  <remove-project name="platform/prebuilts/module_sdk/Permission" />
+  <remove-project name="platform/prebuilts/module_sdk/Profiling" />
+  <remove-project name="platform/prebuilts/module_sdk/RemoteKeyProvisioning" />
+  <remove-project name="platform/prebuilts/module_sdk/Scheduling" />
+  <remove-project name="platform/prebuilts/module_sdk/SdkExtensions" />
+  <remove-project name="platform/prebuilts/module_sdk/StatsD" />
+  <remove-project name="platform/prebuilts/module_sdk/Uwb" />
+  <remove-project name="platform/prebuilts/module_sdk/Wifi" />
+  <remove-project name="platform/external/eigen" />
+  <remove-project name="platform/external/chromium-trace" />
+
 </manifest>

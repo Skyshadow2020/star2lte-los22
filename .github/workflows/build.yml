@@ -136,6 +136,16 @@ jobs:
           ccache -M 12G
           export USE_CCACHE=1
           export ALLOW_MISSING_DEPENDENCIES=true
+          # own monitor: the sync-step monitor dies with its step, and runs
+          # #12-#14 were killed mid-soong with NO memory data — this one
+          # covers breakfast/soong/ninja until the step ends
+          (
+            while true; do
+              echo "$(date +%H:%M:%S) BUILD root_avail=$(df -B1 --output=avail / | tail -1 | tr -d ' ') mem_avail_mb=$(free -m | awk '/Mem:/{print $7}') swap_used_mb=$(free -m | awk '/Swap:/{print $3}')"
+              sleep 20
+            done
+          ) &
+          MONPID=$!
           source build/envsetup.sh
           # breakfast FIRST: its roomservice repo sync needs the git object
           # stores intact — with packs deleted, repo's rev-parse fails and it
@@ -145,8 +155,17 @@ jobs:
           # refs/configs which stay. Frees ~45G for out/.
           du -sh .repo/project-objects 2>/dev/null || true
           find .repo/project-objects -type f \( -name "*.pack" -o -name "*.idx" -o -name "*.keep" \) -delete
+          # upgrade swap now that ~45G is free: soong analysis on A15 can
+          # spike way past the 16G RAM (suspected cause of the runner kills).
+          # 12G not 16G: keeps ~42G of the freed space for out/+ccache.
+          sudo swapoff /build-swap || true
+          sudo rm -f /build-swap
+          sudo fallocate -l 12G /build-swap && sudo chmod 600 /build-swap \
+            && sudo mkswap /build-swap && sudo swapon /build-swap
           df -h /
+          free -m
           mka bacon -j"$(nproc)"
+          kill $MONPID 2>/dev/null || true
 
       - name: Disk report (always)
         if: always()
